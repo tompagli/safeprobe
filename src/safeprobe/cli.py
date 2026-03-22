@@ -1,5 +1,5 @@
 """SafeProbe CLI entry point."""
-import sys, argparse, json, glob
+import sys, argparse, json, glob, os
 from pathlib import Path
 from safeprobe.config import Config, load_config
 
@@ -240,8 +240,27 @@ def _cmd_report(config, args=None):
     print(f"  Robustness Score: {robustness:.1f}%")
 
     # Generate report files
+    os.makedirs(output_dir, exist_ok=True)
     report_gen = ReportGenerator()
-    report_gen.generate_report(csv_path, output_dir=output_dir)
+
+    # Add categories
+    df["attack_category"] = df["attack_prompt"].apply(report_gen.categorize_attack)
+
+    # Text report
+    asr_metrics["robustness_score"] = robustness
+    report_text = report_gen.generate_text_report(df, asr_metrics,
+                                                   output_path=os.path.join(output_dir, "safeprobe_report.txt"))
+    # JSON report
+    report_gen.generate_json_report(df, asr_metrics,
+                                     output_path=os.path.join(output_dir, "safeprobe_report.json"))
+    # PDF report (optional, needs matplotlib)
+    try:
+        report_gen.generate_pdf_report(df, asr_metrics,
+                                        output_path=os.path.join(output_dir, "safeprobe_report.pdf"))
+    except Exception as e:
+        logger.warning(f"PDF generation skipped: {e}")
+
+    print(f"\n  Reports saved to {output_dir}/")
 
 
 # ── Full Pipeline ─────────────────────────────────────────────────────────────
