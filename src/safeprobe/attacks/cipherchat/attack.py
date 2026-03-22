@@ -95,7 +95,7 @@ class CipherChatAttack:
             pi = params.get("prompts","advbench")
             if pi == "advbench":
                 from safeprobe.datasets.prompts import load_advbench
-                raw = [d["goal"] for d in load_advbench(params.get("sample_size"))]
+                raw = [d["goal"] for d in load_advbench(max_samples=params.get("sample_size"))]
             else: raw = [p.strip() for p in pi.split(",")]
             entries = []
             for i, prompt in enumerate(raw, 1):
@@ -116,4 +116,5 @@ class CipherChatAttack:
             return {"technique":self.name,"success":True,"summary":{"total":len(raw),"successful":succ,
                 "asr":f"{succ/len(raw)*100:.1f}%" if raw else "0%"},"output_file":out}
         except Exception as e:
+            logger.error(f"CipherChat attack failed: {e}", exc_info=True)
             return {"technique":self.name,"success":False,"error":str(e)}
