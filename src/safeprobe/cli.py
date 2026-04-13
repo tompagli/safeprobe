@@ -21,7 +21,7 @@ def _build_parser():
 
     # attack subcommand
     atk = sub.add_parser("attack", help="Run adversarial attacks")
-    atk.add_argument("--attack", choices=["promptmap", "pair", "cipherchat", "all"], default="all")
+    atk.add_argument("--attack", choices=["promptmap", "pair", "cipherchat", "composite", "all"], default="all")
 
     # judge subcommand
     jdg = sub.add_parser("judge", help="Run CoT judge on consolidated CSV")
@@ -41,7 +41,7 @@ def _build_parser():
 
     # pipeline subcommand (attack -> consolidate -> judge -> report)
     pip = sub.add_parser("pipeline", help="Run full pipeline: attack -> consolidate -> judge -> report")
-    pip.add_argument("--attack", choices=["promptmap", "pair", "cipherchat", "all"], default="all")
+    pip.add_argument("--attack", choices=["promptmap", "pair", "cipherchat", "composite", "all"], default="all")
     pip.add_argument("--skip-judge", action="store_true", help="Skip the judge step")
 
     return p
@@ -98,9 +98,10 @@ def _cmd_attack(config, attack_name):
     from safeprobe.attacks.promptmap.attack import PromptMapAttack
     from safeprobe.attacks.pair.attack import PAIRAttack
     from safeprobe.attacks.cipherchat.attack import CipherChatAttack
+    from safeprobe.attacks.composite.attack import CompositeAttack
     from safeprobe.datasets.adapters import create_adapter
 
-    attacks_to_run = ["promptmap", "pair", "cipherchat"] if attack_name == "all" else [attack_name]
+    attacks_to_run = ["promptmap", "pair", "cipherchat", "composite"] if attack_name == "all" else [attack_name]
 
     for name in attacks_to_run:
         print(f"\n--- Running {name} ---")
@@ -135,6 +136,15 @@ def _cmd_attack(config, attack_name):
                     print(f"  CipherChat: {r.get('summary', {})}")
                 else:
                     print(f"  CipherChat failed: {r.get('error', 'unknown error')}")
+
+            elif name == "composite":
+                atk = CompositeAttack(config)
+                r = atk.execute(atk.get_default_parameters())
+                if r.get("success"):
+                    s = r.get("summary", {})
+                    print(f"  Composite: ASR={s.get('asr')} best={s.get('best_combination')}")
+                else:
+                    print(f"  Composite failed: {r.get('error', 'unknown error')}")
 
         except Exception as e:
             print(f"  {name} error: {e}")

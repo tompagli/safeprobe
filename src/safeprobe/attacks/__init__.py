@@ -8,5 +8,6 @@ its own attack logic, CLI entry point, and supporting components.
 from .promptmap.attack import PromptMapAttack
 from .pair.attack import PAIRAttack
 from .cipherchat.attack import CipherChatAttack
+from .composite.attack import CompositeAttack
 
-__all__ = ["PromptMapAttack", "PAIRAttack", "CipherChatAttack"]
+__all__ = ["PromptMapAttack", "PAIRAttack", "CipherChatAttack", "CompositeAttack"]

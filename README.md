@@ -43,6 +43,7 @@ SafeProbe is designed for **research reproducibility** and **practical deploymen
 ## :sparkles: Features
 
 ✔ Automated red-teaming via query-access attacks  
+✔ **Composite CO × MG attack** — exhaustive multi-layer technique pairing with per-combination ASR ranking  
 ✔ Support for multiple LLM providers (OpenAI, Anthropic, Google, Ollama, xAI)  
 ✔ CoT-based semantic safety classification using local or API-based models  
 ✔ Quantitative metrics (Attack Success Rate, Robustness Score)  
@@ -64,7 +65,11 @@ safeprobe/
 │   ├── promptmap/      # Rule-based prompt transformation (56 YAML rules)
 │   │   └── rules/      # Attack rules organized by category
 │   ├── pair/           # PAIR iterative adversarial refinement
-│   └── cipherchat/     # Encoding-based attacks (Caesar, Atbash, Morse, ASCII)
+│   ├── cipherchat/     # Encoding-based attacks (Caesar, Atbash, Morse, ASCII)
+│   └── composite/      # CO × MG combination attack (differentiator)
+│       └── transformers/
+│           ├── competing_objectives.py    # prefix, refusal suppression, style, roleplay
+│           └── mismatched_generalization.py  # base64, rot13, leetspeak, pig latin, translation
 │
 ├── datasets/           # Adversarial prompt datasets & model adapters
 │   ├── prompts.py      # AdvBench loader (HuggingFace or local)
@@ -87,17 +92,38 @@ safeprobe/
 | **PromptMap** | Rule-based | 56 YAML rules covering jailbreak, harmful, hate, distraction, social bias, and prompt stealing categories | 1 |
 | **CipherChat** | Encoding-based | Reformulates prompts using Caesar, Atbash, Morse, or ASCII encoding to bypass safety filters | 3 |
 | **PAIR** | Model-based | Uses an attacker LLM to iteratively refine adversarial prompts across multiple streams | 5 |
+| **Composite** | Multi-layer | Combines Competing Objectives (CO) and Mismatched Generalization (MG) techniques; tests all 20 CO × MG pairings and ranks them by ASR | 7 |
+
+#### Composite Attack — CO × MG Techniques
+
+The Composite attack is SafeProbe's differentiating feature. It systematically tests every pairing of a **Competing Objectives** technique with a **Mismatched Generalization** technique, giving researchers a ranked view of which combinations are most effective against a given model.
+
+| Layer | Technique | Strategy |
+|-------|-----------|----------|
+| **CO** | `prefix_injection` | Forces the model to begin with an affirmative prefix, steering it toward compliance |
+| **CO** | `refusal_suppression` | Explicitly instructs the model to omit refusal language |
+| **CO** | `style_injection` | Reframes the request as academic, fictional, professional, or educational |
+| **CO** | `roleplay` | Adopts a persona (DAN, researcher, character, developer mode) that normalizes compliance |
+| **MG** | `base64` | Encodes the payload in base64 with an explicit decode instruction |
+| **MG** | `rot13` | ROT13-encodes the payload with an explicit decode instruction |
+| **MG** | `leetspeak` | Substitutes characters (a→4, e→3, o→0…) to evade surface-level pattern matching |
+| **MG** | `pig_latin` | Applies pig latin word-by-word transformation |
+| **MG** | `translation` | Translates the prompt to another language (uses `deep-translator` if installed; falls back to a language-framing wrapper) |
+
+**Ordering**: MG is applied first (obscures the payload from safety filters), then CO wraps the result (plaintext instruction to decode and comply).
 
 ### Pipeline Flow
 
 ```
-┌──────────┐    ┌─────────────┐    ┌───────────┐    ┌──────────┐
-│  Attack   │───▶│ Consolidate │───▶│   Judge   │───▶│  Report  │
-│           │    │             │    │           │    │          │
-│ PromptMap │    │ JSON → CSV  │    │ CoT-based │    │ TXT/JSON │
-│ PAIR      │    │ Standardize │    │ 0/1 score │    │ PDF+Chart│
-│ CipherChat│    │ entries     │    │ reasoning │    │ Metrics  │
-└──────────┘    └─────────────┘    └───────────┘    └──────────┘
+┌─────────────┐    ┌─────────────┐    ┌───────────┐    ┌──────────┐
+│   Attack    │───▶│ Consolidate │───▶│   Judge   │───▶│  Report  │
+│             │    │             │    │           │    │          │
+│ PromptMap   │    │ JSON → CSV  │    │ CoT-based │    │ TXT/JSON │
+│ PAIR        │    │ Standardize │    │ 0/1 score │    │ PDF+Chart│
+│ CipherChat  │    │ entries     │    │ reasoning │    │ Metrics  │
+│ Composite   │    │             │    │           │    │ ASR rank │
+│ (CO × MG)   │    │             │    │           │    │          │
+└─────────────┘    └─────────────┘    └───────────┘    └──────────┘
 ```
 
 ---
@@ -176,6 +202,7 @@ attacks:
   - promptmap
   - pair
   - cipherchat
+  - composite
 
 dataset: advbench
 sample_size: 50
@@ -235,6 +262,7 @@ Run a specific attack:
 safeprobe --target-model gpt-4.1-2025-04-14 --target-model-type openai attack --attack promptmap
 safeprobe --target-model gpt-4.1-2025-04-14 --target-model-type openai attack --attack pair
 safeprobe --target-model gpt-4.1-2025-04-14 --target-model-type openai attack --attack cipherchat
+safeprobe --target-model gpt-4.1-2025-04-14 --target-model-type openai attack --attack composite
 ```
 
 Attack results are saved as JSON files in the `results/` directory.
@@ -326,6 +354,7 @@ from safeprobe.config import Config
 from safeprobe.attacks.promptmap.attack import PromptMapAttack
 from safeprobe.attacks.pair.attack import PAIRAttack
 from safeprobe.attacks.cipherchat.attack import CipherChatAttack
+from safeprobe.attacks.composite.attack import CompositeAttack
 from safeprobe.datasets.adapters import create_adapter
 from safeprobe.analysis.judge import JailbreakJudge
 from safeprobe.analysis.consolidator import ResultsConsolidator
@@ -343,9 +372,30 @@ adapter = create_adapter(config.target_model, config.target_model_type, api_key=
 pm = PromptMapAttack(config=config)
 pm_results = pm.execute(target_adapter=adapter, output_file="results/promptmap.json")
 
+# Run Composite attack (all 20 CO × MG combinations)
+composite = CompositeAttack(config=config)
+composite_results = composite.execute({
+    **composite.get_default_parameters(),
+    "sample_size": 20,
+    "use_judge": True,
+})
+print(f"Best combo: {composite_results['summary']['best_combination']}")
+print(f"Overall ASR: {composite_results['summary']['asr']}")
+
+# Or target specific technique subsets
+composite_results = composite.execute({
+    **composite.get_default_parameters(),
+    "co_techniques": ["prefix_injection", "roleplay"],
+    "mg_techniques": ["base64", "rot13"],
+    "sample_size": 10,
+})
+
 # Consolidate
 consolidator = ResultsConsolidator()
-df = consolidator.consolidate_from_json_files(["results/promptmap.json"])
+df = consolidator.consolidate_from_json_files([
+    "results/promptmap.json",
+    "results/composite_results.json",
+])
 
 # Judge
 judge = JailbreakJudge(config)
@@ -389,6 +439,7 @@ Complexity weights:
 | PromptMap | 1 | Simple prompt modifications |
 | CipherChat | 3 | Sophisticated encoding tricks |
 | PAIR | 5 | Multi-turn iterative manipulation |
+| Composite | 7 | Multi-layer CO + MG combination with exhaustive pairing |
 
 A higher Robustness Score indicates a model that requires more complex attacks to compromise, suggesting stronger safety alignment.
 
