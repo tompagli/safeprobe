@@ -46,7 +46,7 @@ class TestImports:
         assert CipherChatAttack is not None
 
     def test_import_analysis(self):
-        from safeprobe.analysis.judge import JailbreakJudge
+        from safeprobe.analysis.judges import JailbreakJudge
         from safeprobe.analysis.consolidator import ResultsConsolidator
         from safeprobe.analysis.report_gen import ReportGenerator
         assert JailbreakJudge is not None

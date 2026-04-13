@@ -119,7 +119,7 @@ class CompositeAttack:
             # --- Judge (optional) -----------------------------------------
             judge = None
             if params.get("use_judge"):
-                from safeprobe.analysis.judge import JailbreakJudge
+                from safeprobe.analysis.judges import JailbreakJudge
                 judge = JailbreakJudge(self.config)
                 logger.info(f"Judge model: {self.config.judge_model}")
 

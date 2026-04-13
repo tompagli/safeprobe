@@ -149,6 +149,109 @@ class XAIAdapter(LLMAdapter):
         return response.choices[0].message.content
 
 
+class HuggingFaceAdapter(LLMAdapter):
+    """Adapter for any HuggingFace causal instruct model.
+
+    Supports Llama-3, Mistral, Qwen3, and any other model with a
+    built-in chat template in its tokenizer.
+
+    Recommended open-source targets:
+      - meta-llama/Llama-3.2-3B-Instruct
+      - mistralai/Mistral-7B-Instruct-v0.3
+      - Qwen/Qwen3-4B
+
+    Args:
+        model_name:   HuggingFace model ID.
+        device_map:   Passed to from_pretrained (default "auto").
+        load_in_4bit: Use 4-bit NF4 quantization via bitsandbytes.
+        hf_token:     HuggingFace access token for gated models.
+        enable_thinking: For Qwen3 models — pass False to suppress
+                         <think> blocks (default True).
+    """
+
+    def __init__(
+        self,
+        model_name: str,
+        device_map: str = "auto",
+        load_in_4bit: bool = False,
+        hf_token: Optional[str] = None,
+        enable_thinking: bool = True,
+        **kwargs,
+    ):
+        super().__init__(model_name, **kwargs)
+        import torch
+        from transformers import AutoTokenizer, AutoModelForCausalLM
+
+        self._enable_thinking = enable_thinking
+        tok_kwargs: Dict = {"trust_remote_code": True}
+        if hf_token:
+            tok_kwargs["token"] = hf_token
+
+        self._tokenizer = AutoTokenizer.from_pretrained(model_name, **tok_kwargs)
+        if self._tokenizer.pad_token is None:
+            self._tokenizer.pad_token = self._tokenizer.eos_token
+
+        model_kwargs: Dict = {"trust_remote_code": True}
+        if hf_token:
+            model_kwargs["token"] = hf_token
+
+        if load_in_4bit:
+            from transformers import BitsAndBytesConfig
+            model_kwargs["quantization_config"] = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.float16,
+            )
+            model_kwargs["device_map"] = device_map
+        elif torch.cuda.is_available():
+            model_kwargs["torch_dtype"] = torch.float16
+            model_kwargs["device_map"] = device_map
+        else:
+            model_kwargs["torch_dtype"] = torch.float32
+
+        self._model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+
+        if not torch.cuda.is_available() and not load_in_4bit:
+            self._model = self._model.to("cpu")
+
+    def query(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+    ) -> str:
+        import torch
+
+        # Qwen3 supports enable_thinking kwarg in apply_chat_template
+        template_kwargs: Dict = {"add_generation_prompt": True, "return_tensors": "pt"}
+        try:
+            input_ids = self._tokenizer.apply_chat_template(
+                messages,
+                enable_thinking=self._enable_thinking,
+                **template_kwargs,
+            ).to(self._model.device)
+        except TypeError:
+            # Tokenizer does not support enable_thinking → ignore it
+            input_ids = self._tokenizer.apply_chat_template(
+                messages,
+                **template_kwargs,
+            ).to(self._model.device)
+
+        gen_kwargs: Dict = {
+            "max_new_tokens": max_tokens,
+            "pad_token_id": self._tokenizer.pad_token_id,
+            "do_sample": temperature > 0,
+        }
+        if temperature > 0:
+            gen_kwargs["temperature"] = temperature
+            gen_kwargs["top_p"] = 0.9
+
+        with torch.no_grad():
+            output = self._model.generate(input_ids, **gen_kwargs)
+
+        new_tokens = output[0][input_ids.shape[-1]:]
+        return self._tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+
+
 def create_adapter(model_name: str, model_type: str, **kwargs) -> LLMAdapter:
     """
     Factory function to create the appropriate adapter.
@@ -167,6 +270,9 @@ def create_adapter(model_name: str, model_type: str, **kwargs) -> LLMAdapter:
         "anthropic": AnthropicAdapter,
         "ollama": OllamaAdapter,
         "xai": XAIAdapter,
+        "huggingface": HuggingFaceAdapter,
+        "hf": HuggingFaceAdapter,
+        "local": HuggingFaceAdapter,
     }
 
     if model_type not in adapters:

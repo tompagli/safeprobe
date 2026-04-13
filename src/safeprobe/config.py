@@ -46,9 +46,22 @@ class Config:
     attacks: List[str] = field(default_factory=lambda: ["promptmap", "pair", "cipherchat"])
 
     # Dataset
-    dataset: str = "advbench"  # advbench or custom path
+    dataset: str = "advbench"  # advbench, harmbench, jailbreakbench, or custom path
     sample_size: Optional[int] = 50
     iterations: int = 3
+
+    # Multi-judge configuration
+    # Supported values: "deepseek", "llamaguard", "harmbench"
+    judges: List[str] = field(default_factory=lambda: ["deepseek"])
+    judge_delay: float = 0.5
+
+    # LlamaGuard-specific settings
+    llamaguard_model: str = "meta-llama/Llama-Guard-3-8B"
+    # HarmBench classifier-specific settings
+    harmbench_model: str = "cais/HarmBench-Llama-2-13b-cls"
+    # Shared local model settings
+    load_in_4bit: bool = False
+    hf_token: Optional[str] = field(default_factory=lambda: os.getenv("HF_TOKEN"))
 
     # Output settings
     results_dir: Path = field(default_factory=lambda: Path("results"))
@@ -85,6 +98,10 @@ class Config:
             "target_model_type": self.target_model_type,
             "judge_model": self.judge_model,
             "judge_model_type": self.judge_model_type,
+            "judges": self.judges,
+            "llamaguard_model": self.llamaguard_model,
+            "harmbench_model": self.harmbench_model,
+            "load_in_4bit": self.load_in_4bit,
             "attacks": self.attacks,
             "dataset": self.dataset,
             "results_dir": str(self.results_dir),

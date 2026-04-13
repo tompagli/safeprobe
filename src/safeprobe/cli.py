@@ -10,12 +10,18 @@ def _build_parser():
     p = argparse.ArgumentParser(prog="safeprobe", description="SafeProbe")
     p.add_argument("--config", type=str, help="Path to YAML/JSON config file")
     p.add_argument("--target-model", type=str)
-    p.add_argument("--target-model-type", choices=["openai", "anthropic", "google", "ollama", "xai"])
+    p.add_argument("--target-model-type",
+                   choices=["openai", "anthropic", "google", "ollama", "xai",
+                            "huggingface", "hf", "local"])
     p.add_argument("--judge-model", type=str)
     p.add_argument("--judge-model-type", type=str)
     p.add_argument("--iterations", type=int)
     p.add_argument("--results-dir", type=str)
     p.add_argument("-v", "--verbose", action="store_true")
+    p.add_argument("--judges", type=str,
+                   help="Comma-separated judge backends: deepseek,llamaguard,harmbench")
+    p.add_argument("--load-in-4bit", action="store_true",
+                   help="Load local models with 4-bit quantization")
 
     sub = p.add_subparsers(dest="command")
 
@@ -32,6 +38,14 @@ def _build_parser():
     # consolidate subcommand
     con = sub.add_parser("consolidate", help="Consolidate JSON results into CSV")
     con.add_argument("--output", type=str, help="Output CSV path")
+
+    # multijudge subcommand
+    mjdg = sub.add_parser("multijudge", help="Run multiple judges and compute inter-rater agreement")
+    mjdg.add_argument("--csv", type=str, help="Input CSV (default: results/consolidated.csv)")
+    mjdg.add_argument("--output", type=str, help="Output CSV path (default: overwrites input)")
+    mjdg.add_argument("--judges", type=str,
+                      help="Comma-separated list: deepseek,llamaguard,harmbench")
+    mjdg.add_argument("--delay", type=float, default=0.5)
 
     # report subcommand
     rpt = sub.add_parser("report", help="Generate evaluation report")
@@ -60,6 +74,10 @@ def _apply_config_overrides(config, args):
         config.iterations = args.iterations
     if args.results_dir:
         config.results_dir = Path(args.results_dir)
+    if getattr(args, "judges", None):
+        config.judges = [j.strip() for j in args.judges.split(",")]
+    if getattr(args, "load_in_4bit", False):
+        config.load_in_4bit = True
 
 
 def main():
@@ -78,6 +96,8 @@ def main():
         _cmd_attack(config, args.attack)
     elif args.command == "judge":
         _cmd_judge(config, args)
+    elif args.command == "multijudge":
+        _cmd_multijudge(config, args)
     elif args.command == "consolidate":
         _cmd_consolidate(config, args)
     elif args.command == "report":
@@ -150,6 +170,43 @@ def _cmd_attack(config, attack_name):
             print(f"  {name} error: {e}")
 
 
+# ── Multi-Judge + Agreement ───────────────────────────────────────────────────
+
+def _cmd_multijudge(config, args=None):
+    from safeprobe.analysis.multi_judge import MultiJudge
+    from safeprobe.analysis.agreement import format_agreement_report
+
+    # Override judges from CLI args if provided
+    if args and hasattr(args, "judges") and args.judges:
+        config.judges = [j.strip() for j in args.judges.split(",")]
+    if args and hasattr(args, "delay") and args.delay:
+        config.judge_delay = args.delay
+
+    csv_path = (
+        (args.csv if args and hasattr(args, "csv") and args.csv else None)
+        or str(config.results_dir / "consolidated.csv")
+    )
+    if not Path(csv_path).exists():
+        print(f"CSV not found: {csv_path}")
+        print("Run 'safeprobe consolidate' first.")
+        return None
+
+    output = (
+        (args.output if args and hasattr(args, "output") and args.output else None)
+        or csv_path
+    )
+
+    print(f"\n--- Running Multi-Judge ({', '.join(config.judges)}) ---")
+    print(f"  Input : {csv_path}")
+    print(f"  Output: {output}")
+
+    mj = MultiJudge.build_from_config(config)
+    _, agreement = mj.judge_csv(csv_path, output_path=output)
+
+    print(format_agreement_report(agreement))
+    return output, agreement
+
+
 # ── Consolidate ───────────────────────────────────────────────────────────────
 
 def _cmd_consolidate(config, args=None):
@@ -178,7 +235,7 @@ def _cmd_consolidate(config, args=None):
 # ── Judge ─────────────────────────────────────────────────────────────────────
 
 def _cmd_judge(config, args=None):
-    from safeprobe.analysis.judge import JailbreakJudge
+    from safeprobe.analysis.judges import JailbreakJudge
 
     csv_path = None
     if args and hasattr(args, "csv") and args.csv:

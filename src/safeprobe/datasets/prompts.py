@@ -101,6 +101,126 @@ def _load_local(path: str, max_samples: Optional[int] = None) -> List[Dict]:
     return samples
 
 
+def load_harmbench(
+    path: Optional[str] = None,
+    max_samples: Optional[int] = None,
+    functional_category: Optional[str] = None,
+) -> List[Dict]:
+    """Load the HarmBench behaviors dataset.
+
+    Tries in order:
+      1. Local file at `path` (CSV or JSON)
+      2. HuggingFace: walledai/HarmBench
+      3. HuggingFace: cais/harmbench_behaviors_text_test (alternate name)
+
+    Args:
+        path: Optional local file path.
+        max_samples: Maximum number of samples to return.
+        functional_category: Filter by functional category
+            (e.g. "standard", "copyright", "contextual").
+
+    Returns:
+        List of dicts with keys: goal, target, category, functional_category.
+    """
+    if path and Path(path).exists():
+        raw = _load_local(path, max_samples)
+        # _load_local may not populate category; return as-is
+        return raw
+
+    # Try HuggingFace
+    for hf_name in ("walledai/HarmBench", "cais/harmbench_behaviors_text_test"):
+        try:
+            from datasets import load_dataset as hf_load
+            ds = hf_load(hf_name, split="train")
+            samples = []
+            for item in ds:
+                goal = (
+                    item.get("Behavior")
+                    or item.get("behavior")
+                    or item.get("goal")
+                    or item.get("prompt", "")
+                )
+                func_cat = item.get("FunctionalCategory") or item.get("functional_category", "")
+                sem_cat = item.get("SemanticCategory") or item.get("category", "")
+                if functional_category and func_cat and functional_category.lower() not in func_cat.lower():
+                    continue
+                samples.append({
+                    "goal": goal,
+                    "target": "Sure, here is",
+                    "category": sem_cat,
+                    "functional_category": func_cat,
+                    "source": "HarmBench",
+                })
+                if max_samples and len(samples) >= max_samples:
+                    break
+            if samples:
+                return samples
+        except Exception:
+            continue
+
+    raise FileNotFoundError(
+        "HarmBench dataset not found. Options:\n"
+        "  1. pip install datasets  (loads from HuggingFace)\n"
+        "  2. Download from https://github.com/centerforaisafety/HarmBench\n"
+        "     and pass the CSV path as `path`."
+    )
+
+
+def load_jailbreakbench(
+    path: Optional[str] = None,
+    max_samples: Optional[int] = None,
+    category: Optional[str] = None,
+) -> List[Dict]:
+    """Load the JailbreakBench behaviors dataset (100 behaviors, 10 categories).
+
+    Reference: Chao et al., "JailbreakBench: An Open Robustness Benchmark
+    for Jailbreaking Large Language Models", NeurIPS 2024.
+
+    Tries in order:
+      1. Local file at `path`
+      2. HuggingFace: JailbreakBench/JBB-Behaviors
+
+    Args:
+        path: Optional local file path.
+        max_samples: Maximum number of samples.
+        category: Filter by category name (e.g. "Harmful behaviors").
+
+    Returns:
+        List of dicts with keys: goal, target, category, index.
+    """
+    if path and Path(path).exists():
+        return _load_local(path, max_samples)
+
+    try:
+        from datasets import load_dataset as hf_load
+        ds = hf_load("JailbreakBench/JBB-Behaviors", split="behaviors")
+        samples = []
+        for item in ds:
+            goal = item.get("Goal") or item.get("goal") or item.get("Behavior") or ""
+            cat = item.get("Category") or item.get("category", "")
+            if category and cat and category.lower() not in cat.lower():
+                continue
+            samples.append({
+                "goal": goal,
+                "target": "Sure, here is",
+                "category": cat,
+                "index": item.get("Index") or item.get("index", ""),
+                "source": "JailbreakBench",
+            })
+            if max_samples and len(samples) >= max_samples:
+                break
+        if samples:
+            return samples
+    except Exception:
+        pass
+
+    raise FileNotFoundError(
+        "JailbreakBench dataset not found. Options:\n"
+        "  1. pip install datasets  (loads from HuggingFace)\n"
+        "  2. Download from https://github.com/JailbreakBench/jailbreakbench"
+    )
+
+
 def load_dataset(name: str, path: Optional[str] = None, max_samples: Optional[int] = None) -> List[Dict]:
     """
     Load a named dataset.
@@ -113,8 +233,13 @@ def load_dataset(name: str, path: Optional[str] = None, max_samples: Optional[in
     Returns:
         List of prompt dictionaries.
     """
-    if name.lower() == "advbench":
+    name_lower = name.lower().replace("-", "").replace("_", "")
+    if name_lower == "advbench":
         return load_advbench(path=path, max_samples=max_samples)
+    elif name_lower in ("harmbench", "hb"):
+        return load_harmbench(path=path, max_samples=max_samples)
+    elif name_lower in ("jailbreakbench", "jbb"):
+        return load_jailbreakbench(path=path, max_samples=max_samples)
     elif path:
         return _load_local(path, max_samples)
     else:

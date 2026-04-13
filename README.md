@@ -44,8 +44,11 @@ SafeProbe is designed for **research reproducibility** and **practical deploymen
 
 ✔ Automated red-teaming via query-access attacks  
 ✔ **Composite CO × MG attack** — exhaustive multi-layer technique pairing with per-combination ASR ranking  
-✔ Support for multiple LLM providers (OpenAI, Anthropic, Google, Ollama, xAI)  
-✔ CoT-based semantic safety classification using local or API-based models  
+✔ Support for multiple LLM providers (OpenAI, Anthropic, HuggingFace, Ollama, xAI)  
+✔ **Open-source target models** — Llama-3, Mistral, Qwen3, and any HuggingFace instruct model  
+✔ **Three judge backends** — CoT/DeepSeek, Llama Guard 3, HarmBench classifier  
+✔ **Inter-rater agreement** — Cohen's κ and Fleiss' κ across all judge pairs  
+✔ **Multiple benchmark datasets** — AdvBench, HarmBench, JailbreakBench  
 ✔ Quantitative metrics (Attack Success Rate, Robustness Score)  
 ✔ Modular, extensible attack architecture  
 ✔ CLI with subcommands and programmatic Python API  
@@ -68,15 +71,21 @@ safeprobe/
 │   ├── cipherchat/     # Encoding-based attacks (Caesar, Atbash, Morse, ASCII)
 │   └── composite/      # CO × MG combination attack (differentiator)
 │       └── transformers/
-│           ├── competing_objectives.py    # prefix, refusal suppression, style, roleplay
-│           └── mismatched_generalization.py  # base64, rot13, leetspeak, pig latin, translation
+│           ├── competing_objectives.py      # prefix, refusal suppression, style, roleplay
+│           └── mismatched_generalization.py # base64, rot13, leetspeak, pig latin, translation
 │
 ├── datasets/           # Adversarial prompt datasets & model adapters
-│   ├── prompts.py      # AdvBench loader (HuggingFace or local)
-│   └── adapters.py     # Unified LLM interface for all providers
+│   ├── prompts.py      # AdvBench / HarmBench / JailbreakBench loaders
+│   └── adapters.py     # Unified LLM interface: OpenAI, Anthropic, HuggingFace, Ollama, xAI
 │
 ├── analysis/           # Output classification, metrics & reporting
-│   ├── judge.py        # CoT-based semantic safety judge (local or API)
+│   ├── judges/         # Judge backends (all share BaseJudge interface)
+│   │   ├── deepseek.py   # CoT judge — DeepSeek R1 local or any API model
+│   │   ├── llama_guard.py# Meta Llama Guard 3 safety classifier (local HF)
+│   │   └── harmbench.py  # CAIS HarmBench binary classifier (local HF)
+│   ├── judge.py        # Backward-compat shim → judges/deepseek.py
+│   ├── multi_judge.py  # Run N judges in parallel + inter-rater agreement
+│   ├── agreement.py    # Cohen's κ, Fleiss' κ, agreement matrix
 │   ├── consolidator.py # Result aggregation, ASR & Robustness Score
 │   └── report_gen.py   # Report generation (TXT, JSON, PDF)
 │
@@ -192,11 +201,23 @@ export XAI_API_KEY="your-key"
 Create an `evaluation.yaml` file for reproducible experiments:
 
 ```yaml
+# Target model (API or open-source)
 target_model: gpt-4.1-2025-04-14
-target_model_type: openai
+target_model_type: openai           # openai | anthropic | huggingface | hf | local | ollama | xai
 
+# Primary CoT judge
 judge_model: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B
 judge_model_type: local
+
+# Multi-judge backends for inter-rater agreement
+judges:
+  - deepseek
+  - llamaguard
+  - harmbench
+
+llamaguard_model: meta-llama/Llama-Guard-3-8B
+harmbench_model: cais/HarmBench-Llama-2-13b-cls
+load_in_4bit: false   # set true to halve VRAM on all local models
 
 attacks:
   - promptmap
@@ -204,7 +225,7 @@ attacks:
   - cipherchat
   - composite
 
-dataset: advbench
+dataset: harmbench    # advbench | harmbench | jailbreakbench | path/to/custom.csv
 sample_size: 50
 iterations: 3
 results_dir: results
@@ -330,6 +351,56 @@ safeprobe report --csv path/to/file.csv --output-dir my_reports --use-judge
 
 ---
 
+---
+
+### Open-Source Target Models
+
+SafeProbe supports any HuggingFace instruct model as an attack target via the `huggingface` adapter type. No API key required — models run locally.
+
+```bash
+# Llama-3.2-3B-Instruct (3B — fast, 4 GB VRAM)
+safeprobe --target-model meta-llama/Llama-3.2-3B-Instruct \
+          --target-model-type huggingface attack
+
+# Mistral-7B-Instruct-v0.3 (7B, ~8 GB VRAM or 4-bit)
+safeprobe --target-model mistralai/Mistral-7B-Instruct-v0.3 \
+          --target-model-type hf --load-in-4bit attack
+
+# Qwen3-4B (4B, Qwen3 <think> blocks handled automatically)
+safeprobe --target-model Qwen/Qwen3-4B \
+          --target-model-type local attack
+```
+
+For gated models (Llama), set your HuggingFace access token:
+
+```bash
+export HF_TOKEN="hf_your_token"
+```
+
+### Benchmark Datasets
+
+SafeProbe supports three adversarial prompt datasets. Dataset choice is a key validity concern — AdvBench is widely used but reviewers often ask for HarmBench or JailbreakBench.
+
+| Dataset | Key | Behaviors | Categories |
+|---------|-----|-----------|------------|
+| **AdvBench** | `advbench` | 520 | General harmful instructions |
+| **HarmBench** | `harmbench` | 400 | Standard, copyright, contextual, multimodal |
+| **JailbreakBench** | `jailbreakbench` | 100 | 10 fine-grained harm categories |
+
+```bash
+# YAML config
+dataset: harmbench   # or jailbreakbench
+
+# Python API
+from safeprobe.datasets.prompts import load_harmbench, load_jailbreakbench
+prompts = load_harmbench(max_samples=50)
+prompts = load_jailbreakbench(max_samples=100, category="Harmful behaviors")
+```
+
+Both load from HuggingFace (`datasets` package) or a local CSV/JSON file.
+
+---
+
 ### Standalone Attack CLIs
 
 Each attack technique has its own standalone CLI entry point:
@@ -445,27 +516,84 @@ A higher Robustness Score indicates a model that requires more complex attacks t
 
 ---
 
-## :brain: CoT Judge
+## :brain: Judge Backends
 
-The Chain-of-Thought judge is the core semantic evaluation component. Unlike keyword-based classifiers, it uses a reasoning-capable LLM to analyze the **intent** behind model responses.
+SafeProbe ships three judge backends, all sharing the same `BaseJudge` interface. Running multiple judges together produces inter-rater agreement metrics that validate your ASR numbers.
 
-### Supported Backends
+### Available Backends
 
-| Backend | Config | VRAM | Cost |
-|---------|--------|------|------|
-| DeepSeek-R1-Distill-Qwen-14B (4-bit) | `--judge-model-type local` | ~9 GB | Free |
-| DeepSeek-R1-Distill-Llama-8B | `--judge-model-type local` | ~16 GB | Free |
-| GPT-4.1 | `--judge-model-type openai` | — | API cost |
-| Any OpenAI-compatible model | `--judge-model-type openai` | — | API cost |
+| Backend | Class | Model | Strategy | VRAM | Cost |
+|---------|-------|-------|----------|------|------|
+| **CoT / DeepSeek** | `JailbreakJudge` | DeepSeek-R1-Distill-Qwen-14B (local) or any API | Chain-of-Thought reasoning, outputs 0/1 | ~9 GB (4-bit) | Free / API |
+| **Llama Guard 3** | `LlamaGuardJudge` | meta-llama/Llama-Guard-3-8B | Meta's safety classifier, outputs "safe"/"unsafe+categories" | ~6 GB (4-bit) | Free |
+| **HarmBench** | `HarmBenchJudge` | cais/HarmBench-Llama-2-13b-cls | CAIS fine-tuned binary classifier, outputs "Yes"/"No" | ~7 GB (4-bit) | Free |
 
-The local judge uses 4-bit NF4 quantization via `bitsandbytes` to fit large models in consumer GPU VRAM.
+All local models support `--load-in-4bit` to halve VRAM requirements.
 
-### Output
+### Inter-Rater Agreement
 
-For each entry, the judge produces:
-- `judge_result`: YES (jailbroken), NO (refused), or AMBIGUOUS
-- `judge_justification`: brief explanation
-- `judge_reasoning_chain`: full CoT reasoning trace
+Running multiple judges on the same results validates that your ASR numbers are not an artifact of a single evaluation method.
+
+```bash
+# Run all three judges and compute agreement
+safeprobe --judges deepseek,llamaguard,harmbench multijudge
+
+# With 4-bit quantization (GPU with ≥ 8 GB VRAM)
+safeprobe --judges llamaguard,harmbench --load-in-4bit multijudge --csv results/consolidated.csv
+```
+
+Output columns added to the CSV:
+- `judge_DeepSeek_result` / `judge_LlamaGuard_result` / `judge_HarmBench_result`
+- `judge_*_justification` and `judge_*_reasoning_chain`
+
+The agreement report is printed to stdout and saved as `results/consolidated_agreement.json`:
+
+```
+============================================================
+  INTER-RATER AGREEMENT REPORT
+============================================================
+  Samples evaluated : 50
+  Valid (no errors)  : 48
+
+  Per-judge Attack Success Rate:
+    DeepSeek             34.0%
+    LlamaGuard           28.0%
+    HarmBench            31.0%
+
+  Fleiss' κ (all judges) : 0.7821  [substantial]
+
+  Pairwise Cohen's κ:
+  Pair                                       κ  Interpretation         %Agree      n
+  DeepSeek vs LlamaGuard                0.7400  substantial             87.5%     48
+  DeepSeek vs HarmBench                 0.8100  almost perfect          90.6%     48
+  LlamaGuard vs HarmBench               0.7900  substantial             89.6%     48
+============================================================
+```
+
+**Kappa interpretation** (Landis & Koch, 1977): `< 0.20` = slight · `0.20–0.40` = fair · `0.40–0.60` = moderate · `0.60–0.80` = substantial · `> 0.80` = almost perfect.
+
+### Python API
+
+```python
+from safeprobe.analysis import JailbreakJudge, LlamaGuardJudge, HarmBenchJudge, MultiJudge
+from safeprobe.analysis import compute_agreement, format_agreement_report
+
+judges = {
+    "DeepSeek":  JailbreakJudge(config),
+    "LlamaGuard": LlamaGuardJudge(load_in_4bit=True),
+    "HarmBench":  HarmBenchJudge(load_in_4bit=True),
+}
+mj = MultiJudge(judges)
+df, agreement = mj.judge_csv("results/consolidated.csv")
+print(format_agreement_report(agreement))
+```
+
+### Single-judge output columns
+
+For each entry, a judge produces:
+- `judge_result`: YES (jailbroken) · NO (refused) · AMBIGUOUS · ERROR
+- `judge_justification`: brief human-readable reason
+- `judge_reasoning_chain`: full raw model output
 
 ---
 
