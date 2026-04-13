@@ -83,7 +83,6 @@ safeprobe/
 │   │   ├── deepseek.py   # CoT judge — DeepSeek R1 local or any API model
 │   │   ├── llama_guard.py# Meta Llama Guard 3 safety classifier (local HF)
 │   │   └── harmbench.py  # CAIS HarmBench binary classifier (local HF)
-│   ├── judge.py        # Backward-compat shim → judges/deepseek.py
 │   ├── multi_judge.py  # Run N judges in parallel + inter-rater agreement
 │   ├── agreement.py    # Cohen's κ, Fleiss' κ, agreement matrix
 │   ├── consolidator.py # Result aggregation, ASR & Robustness Score
