@@ -127,42 +127,75 @@ def load_harmbench(
         # _load_local may not populate category; return as-is
         return raw
 
-    # Try HuggingFace
-    for hf_name in ("walledai/HarmBench", "cais/harmbench_behaviors_text_test"):
-        try:
-            from datasets import load_dataset as hf_load
-            ds = hf_load(hf_name, split="train")
-            samples = []
-            for item in ds:
-                goal = (
-                    item.get("Behavior")
-                    or item.get("behavior")
-                    or item.get("goal")
-                    or item.get("prompt", "")
-                )
-                func_cat = item.get("FunctionalCategory") or item.get("functional_category", "")
-                sem_cat = item.get("SemanticCategory") or item.get("category", "")
-                if functional_category and func_cat and functional_category.lower() not in func_cat.lower():
-                    continue
-                samples.append({
-                    "goal": goal,
-                    "target": "Sure, here is",
-                    "category": sem_cat,
-                    "functional_category": func_cat,
-                    "source": "HarmBench",
-                })
-                if max_samples and len(samples) >= max_samples:
-                    break
-            if samples:
-                return samples
-        except Exception:
-            continue
+    # Try HuggingFace (walledai/HarmBench requires access approval — gated)
+    try:
+        from datasets import load_dataset as hf_load
+        ds = hf_load("walledai/HarmBench", split="train")
+        samples = []
+        for item in ds:
+            goal = (
+                item.get("Behavior") or item.get("behavior")
+                or item.get("goal") or item.get("prompt", "")
+            )
+            func_cat = item.get("FunctionalCategory") or item.get("functional_category", "")
+            sem_cat = item.get("SemanticCategory") or item.get("category", "")
+            if functional_category and func_cat and functional_category.lower() not in func_cat.lower():
+                continue
+            samples.append({
+                "goal": goal,
+                "target": "Sure, here is",
+                "category": sem_cat,
+                "functional_category": func_cat,
+                "source": "HarmBench",
+            })
+            if max_samples and len(samples) >= max_samples:
+                break
+        if samples:
+            return samples
+    except Exception:
+        pass
+
+    # Fallback: download behaviors CSV directly from the HarmBench GitHub repo
+    try:
+        import urllib.request
+        import csv
+        import io
+        _URL = (
+            "https://raw.githubusercontent.com/centerforaisafety/HarmBench"
+            "/main/data/behavior_datasets/harmbench_behaviors_text_test.csv"
+        )
+        with urllib.request.urlopen(_URL, timeout=30) as resp:
+            content = resp.read().decode("utf-8")
+        reader = csv.DictReader(io.StringIO(content))
+        samples = []
+        for row in reader:
+            goal = row.get("Behavior") or row.get("behavior") or ""
+            func_cat = row.get("FunctionalCategory", "")
+            sem_cat = row.get("SemanticCategory", "")
+            if functional_category and func_cat and functional_category.lower() not in func_cat.lower():
+                continue
+            if not goal:
+                continue
+            samples.append({
+                "goal": goal,
+                "target": "Sure, here is",
+                "category": sem_cat,
+                "functional_category": func_cat,
+                "source": "HarmBench",
+            })
+            if max_samples and len(samples) >= max_samples:
+                break
+        if samples:
+            return samples
+    except Exception:
+        pass
 
     raise FileNotFoundError(
         "HarmBench dataset not found. Options:\n"
-        "  1. pip install datasets  (loads from HuggingFace)\n"
-        "  2. Download from https://github.com/centerforaisafety/HarmBench\n"
-        "     and pass the CSV path as `path`."
+        "  1. Request access at https://huggingface.co/datasets/walledai/HarmBench\n"
+        "     then set HF_TOKEN env var and retry.\n"
+        "  2. Download the CSV from https://github.com/centerforaisafety/HarmBench\n"
+        "     and pass the local path: load_harmbench(path='harmbench_behaviors_text_test.csv')"
     )
 
 
@@ -193,7 +226,8 @@ def load_jailbreakbench(
 
     try:
         from datasets import load_dataset as hf_load
-        ds = hf_load("JailbreakBench/JBB-Behaviors", split="behaviors")
+        # config_name="behaviors", split="harmful" (100 adversarial behaviors)
+        ds = hf_load("JailbreakBench/JBB-Behaviors", "behaviors", split="harmful")
         samples = []
         for item in ds:
             goal = item.get("Goal") or item.get("goal") or item.get("Behavior") or ""

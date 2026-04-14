@@ -1,0 +1,33 @@
+# ── Target ────────────────────────────────────────────────────────────────────
+# Qwen3-4B supports a <think> reasoning mode; SafeProbe disables it by default
+# so responses stay clean for judge evaluation.
+target_model: Qwen/Qwen3-4B
+target_model_type: huggingface     # runs locally on GPU, no API cost
+
+# ── Attacks ───────────────────────────────────────────────────────────────────
+attacks:
+  - composite
+
+dataset: jailbreakbench
+sample_size: 50
+
+# ── CoT judge (DeepSeek — local, free) ───────────────────────────────────────
+judge_model: deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+judge_model_type: local
+
+# ── Multi-judge: all three backends ──────────────────────────────────────────
+judges:
+  - deepseek
+  - llamaguard
+  - harmbench
+
+llamaguard_model: meta-llama/Llama-Guard-3-8B
+harmbench_model: cais/HarmBench-Llama-2-13b-cls
+load_in_4bit: false
+judge_delay: 0.5
+
+# ── Output ────────────────────────────────────────────────────────────────────
+results_dir: results/qwen
+log_dir: logs
+verbose: false
+save_intermediate: true

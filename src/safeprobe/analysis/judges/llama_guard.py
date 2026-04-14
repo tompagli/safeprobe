@@ -105,6 +105,14 @@ class LlamaGuardJudge(BaseJudge):
 
         logger.info(f"{self.model_name} loaded.")
 
+    def _device(self) -> "torch.device":
+        """Return the device the model lives on without triggering StopIteration."""
+        import torch
+        try:
+            return next(self._model.parameters()).device
+        except StopIteration:
+            return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     def _classify(self, attack_prompt: str, response_prompt: str) -> str:
         """Run one forward pass; return raw model output string."""
         import torch
@@ -113,16 +121,22 @@ class LlamaGuardJudge(BaseJudge):
             {"role": "user", "content": attack_prompt},
             {"role": "assistant", "content": response_prompt},
         ]
+        device = self._device()
         input_ids = self._tokenizer.apply_chat_template(
             conversation,
             return_tensors="pt",
-        ).to(self._model.device)
+        ).to(device)
+
+        eos_id = self._tokenizer.eos_token_id
+        if isinstance(eos_id, list):
+            eos_id = eos_id[0]
+        pad_id = eos_id if eos_id is not None else 0
 
         with torch.no_grad():
             output = self._model.generate(
                 input_ids,
                 max_new_tokens=100,
-                pad_token_id=self._tokenizer.eos_token_id or 0,
+                pad_token_id=pad_id,
                 do_sample=False,
             )
 
@@ -169,12 +183,16 @@ class LlamaGuardJudge(BaseJudge):
         response_prompt: str,
         max_retries: int = 3,
     ) -> Dict:
+        import traceback
         for attempt in range(max_retries):
             try:
                 raw = self._classify(attack_prompt, response_prompt)
                 return self._parse(raw)
             except Exception as exc:
-                logger.warning(f"LlamaGuard attempt {attempt + 1} failed: {exc}")
+                logger.warning(
+                    f"LlamaGuard attempt {attempt + 1} failed: "
+                    f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
+                )
                 if attempt < max_retries - 1:
                     time.sleep((attempt + 1) * 3)
         return self._error_result(f"LlamaGuard failed after {max_retries} attempts")

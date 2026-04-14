@@ -1,0 +1,33 @@
+# ── Target ────────────────────────────────────────────────────────────────────
+# Requires HF_TOKEN env var (gated model — accept license on huggingface.co first).
+target_model: meta-llama/Llama-3.2-3B-Instruct
+target_model_type: huggingface     # runs locally on GPU, no API cost
+
+# ── Attacks ───────────────────────────────────────────────────────────────────
+attacks:
+  - composite
+
+dataset: jailbreakbench
+sample_size: 50
+
+# ── CoT judge (DeepSeek — local, free) ───────────────────────────────────────
+judge_model: deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+judge_model_type: local
+
+# ── Multi-judge: all three backends ──────────────────────────────────────────
+judges:
+  - deepseek
+  - llamaguard
+  - harmbench
+
+llamaguard_model: meta-llama/Llama-Guard-3-8B
+harmbench_model: cais/HarmBench-Llama-2-13b-cls
+# Llama-3.2-3B fits in fp16 on A5500; run target and judges sequentially.
+load_in_4bit: false
+judge_delay: 0.5
+
+# ── Output ────────────────────────────────────────────────────────────────────
+results_dir: results/llama
+log_dir: logs
+verbose: false
+save_intermediate: true

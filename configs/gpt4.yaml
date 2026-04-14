@@ -1,0 +1,31 @@
+# ── Target ────────────────────────────────────────────────────────────────────
+target_model: gpt-4.1-2025-04-14
+target_model_type: openai          # reads OPENAI_API_KEY from env
+
+# ── Attacks ───────────────────────────────────────────────────────────────────
+attacks:
+  - composite
+
+dataset: jailbreakbench
+sample_size: 10
+
+# ── CoT judge (DeepSeek — local, free) ───────────────────────────────────────
+judge_model: deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+judge_model_type: local
+
+# ── Multi-judge: all three backends ──────────────────────────────────────────
+judges:
+  - deepseek
+  - llamaguard
+  - harmbench
+
+llamaguard_model: meta-llama/Llama-Guard-3-8B
+harmbench_model: cais/HarmBench-Llama-2-13b-cls
+load_in_4bit: false   # 8B models fit in fp16 on A5500; harmbench always uses 4-bit internally
+judge_delay: 0.5
+
+# ── Output ────────────────────────────────────────────────────────────────────
+results_dir: results/gpt4
+log_dir: logs
+verbose: false
+save_intermediate: true

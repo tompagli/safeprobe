@@ -127,11 +127,12 @@ class Config:
 
     def validate(self) -> bool:
         """Validate that at least one API key is available."""
+        local_types = {"ollama", "huggingface", "hf", "local"}
+        if self.target_model_type in local_types:
+            return True  # local models need no API key
         any_key = any([self.openai_api_key, self.anthropic_api_key,
                        self.google_api_key, self.xai_api_key, self.azure_api_key])
-        if not any_key and self.target_model_type != "ollama":
-            return False
-        return True
+        return any_key
 
 
 def load_config(config_path: Optional[str] = None) -> Config:

@@ -1,0 +1,32 @@
+# ── Target ────────────────────────────────────────────────────────────────────
+# Update model ID below if OpenAI releases gpt-5 under a different name.
+target_model: gpt-5
+target_model_type: openai          # reads OPENAI_API_KEY from env
+
+# ── Attacks ───────────────────────────────────────────────────────────────────
+attacks:
+  - composite
+
+dataset: jailbreakbench
+sample_size: 50
+
+# ── CoT judge (DeepSeek — local, free) ───────────────────────────────────────
+judge_model: deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+judge_model_type: local
+
+# ── Multi-judge: all three backends ──────────────────────────────────────────
+judges:
+  - deepseek
+  - llamaguard
+  - harmbench
+
+llamaguard_model: meta-llama/Llama-Guard-3-8B
+harmbench_model: cais/HarmBench-Llama-2-13b-cls
+load_in_4bit: false
+judge_delay: 0.5
+
+# ── Output ────────────────────────────────────────────────────────────────────
+results_dir: results/gpt5
+log_dir: logs
+verbose: false
+save_intermediate: true

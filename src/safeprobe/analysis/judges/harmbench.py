@@ -124,6 +124,14 @@ class HarmBenchJudge(BaseJudge):
 
         logger.info("HarmBench classifier loaded.")
 
+    def _device(self) -> "torch.device":
+        """Return the device the model lives on without triggering StopIteration."""
+        import torch
+        try:
+            return next(self._model.parameters()).device
+        except StopIteration:
+            return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     def _classify(self, behavior: str, generation: str) -> str:
         """Run the classifier and return raw text output."""
         import torch
@@ -134,7 +142,7 @@ class HarmBenchJudge(BaseJudge):
             return_tensors="pt",
             truncation=True,
             max_length=2048,
-        ).to(self._model.device)
+        ).to(self._device())
 
         with torch.no_grad():
             output = self._model.generate(
