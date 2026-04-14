@@ -46,6 +46,10 @@ def _build_parser():
     mjdg.add_argument("--judges", type=str,
                       help="Comma-separated list: deepseek,llamaguard,harmbench")
     mjdg.add_argument("--delay", type=float, default=0.5)
+    mjdg.add_argument(
+        "--no-sequential", dest="sequential", action="store_false", default=True,
+        help="Load all judges simultaneously (only safe when all models fit in VRAM together)",
+    )
 
     # report subcommand
     rpt = sub.add_parser("report", help="Generate evaluation report")
@@ -196,11 +200,14 @@ def _cmd_multijudge(config, args=None):
         or csv_path
     )
 
-    print(f"\n--- Running Multi-Judge ({', '.join(config.judges)}) ---")
+    sequential = getattr(args, "sequential", True) if args else True
+
+    mode = "sequential (one model at a time)" if sequential else "simultaneous"
+    print(f"\n--- Running Multi-Judge ({', '.join(config.judges)}) [{mode}] ---")
     print(f"  Input : {csv_path}")
     print(f"  Output: {output}")
 
-    mj = MultiJudge.build_from_config(config)
+    mj = MultiJudge.build_from_config(config, sequential=sequential)
     _, agreement = mj.judge_csv(csv_path, output_path=output)
 
     print(format_agreement_report(agreement))

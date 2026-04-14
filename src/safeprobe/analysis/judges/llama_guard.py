@@ -122,10 +122,17 @@ class LlamaGuardJudge(BaseJudge):
             {"role": "assistant", "content": response_prompt},
         ]
         device = self._device()
-        input_ids = self._tokenizer.apply_chat_template(
+
+        # apply_chat_template returns a plain tensor in transformers <5 and a
+        # BatchEncoding in transformers ≥5.  Always extract the input_ids tensor.
+        result = self._tokenizer.apply_chat_template(
             conversation,
             return_tensors="pt",
-        ).to(device)
+        )
+        if hasattr(result, "input_ids"):
+            input_ids = result.input_ids.to(device)
+        else:
+            input_ids = result.to(device)
 
         eos_id = self._tokenizer.eos_token_id
         if isinstance(eos_id, list):
@@ -134,7 +141,7 @@ class LlamaGuardJudge(BaseJudge):
 
         with torch.no_grad():
             output = self._model.generate(
-                input_ids,
+                input_ids=input_ids,
                 max_new_tokens=100,
                 pad_token_id=pad_id,
                 do_sample=False,

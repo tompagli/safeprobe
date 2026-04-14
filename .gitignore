@@ -9,3 +9,4 @@ safeprobe.egg-info
 /src/safeprobe/utils/__pycache__
 /src/safeprobe/attacks/__pycache__
 /src/safeprobe/attacks/__pycache__
+results/
