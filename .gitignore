@@ -10,3 +10,5 @@ safeprobe.egg-info
 /src/safeprobe/attacks/__pycache__
 /src/safeprobe/attacks/__pycache__
 results/
+reports/
+*.out

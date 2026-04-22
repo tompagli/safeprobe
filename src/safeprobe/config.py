@@ -50,6 +50,12 @@ class Config:
     sample_size: Optional[int] = 50
     iterations: int = 3
 
+    # PAIR-specific attacker settings
+    pair_attack_model: str = "gpt-4.1-2025-04-14"
+    pair_attack_model_type: str = "openai"
+    pair_n_streams: int = 5
+    pair_n_iterations: int = 5
+
     # Multi-judge configuration
     # Supported values: "deepseek", "llamaguard", "harmbench"
     judges: List[str] = field(default_factory=lambda: ["deepseek"])

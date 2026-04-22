@@ -213,6 +213,37 @@ class HuggingFaceAdapter(LLMAdapter):
         if not torch.cuda.is_available() and not load_in_4bit:
             self._model = self._model.to("cpu")
 
+    def _device(self):
+        """Return the model's device without triggering StopIteration from device_map."""
+        import torch
+        try:
+            return next(self._model.parameters()).device
+        except StopIteration:
+            return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    def _apply_template(self, messages: List[Dict[str, str]]) -> "torch.Tensor":
+        """Run apply_chat_template and always return a plain input_ids tensor.
+
+        Transformers ≥5 returns a BatchEncoding; ≤4 returns a plain tensor.
+        Both cases are handled here so callers never see a BatchEncoding.
+        """
+        template_kwargs: Dict = {"add_generation_prompt": True, "return_tensors": "pt"}
+        device = self._device()
+        try:
+            result = self._tokenizer.apply_chat_template(
+                messages,
+                enable_thinking=self._enable_thinking,
+                **template_kwargs,
+            )
+        except TypeError:
+            # Tokenizer does not support enable_thinking — ignore it
+            result = self._tokenizer.apply_chat_template(messages, **template_kwargs)
+
+        # BatchEncoding (transformers ≥5) vs plain tensor (transformers ≤4)
+        if hasattr(result, "input_ids"):
+            return result.input_ids.to(device)
+        return result.to(device)
+
     def query(
         self,
         messages: List[Dict[str, str]],
@@ -221,24 +252,16 @@ class HuggingFaceAdapter(LLMAdapter):
     ) -> str:
         import torch
 
-        # Qwen3 supports enable_thinking kwarg in apply_chat_template
-        template_kwargs: Dict = {"add_generation_prompt": True, "return_tensors": "pt"}
-        try:
-            input_ids = self._tokenizer.apply_chat_template(
-                messages,
-                enable_thinking=self._enable_thinking,
-                **template_kwargs,
-            ).to(self._model.device)
-        except TypeError:
-            # Tokenizer does not support enable_thinking → ignore it
-            input_ids = self._tokenizer.apply_chat_template(
-                messages,
-                **template_kwargs,
-            ).to(self._model.device)
+        input_ids = self._apply_template(messages)
+
+        eos_id = self._tokenizer.eos_token_id
+        if isinstance(eos_id, list):
+            eos_id = eos_id[0]
+        pad_id = self._tokenizer.pad_token_id or eos_id or 0
 
         gen_kwargs: Dict = {
             "max_new_tokens": max_tokens,
-            "pad_token_id": self._tokenizer.pad_token_id,
+            "pad_token_id": pad_id,
             "do_sample": temperature > 0,
         }
         if temperature > 0:
@@ -246,7 +269,7 @@ class HuggingFaceAdapter(LLMAdapter):
             gen_kwargs["top_p"] = 0.9
 
         with torch.no_grad():
-            output = self._model.generate(input_ids, **gen_kwargs)
+            output = self._model.generate(input_ids=input_ids, **gen_kwargs)
 
         new_tokens = output[0][input_ids.shape[-1]:]
         return self._tokenizer.decode(new_tokens, skip_special_tokens=True).strip()

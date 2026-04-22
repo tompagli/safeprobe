@@ -30,13 +30,51 @@ logger = get_logger(__name__)
 _JudgeOrFactory = Union[Any, Callable[[], Any]]
 
 
+def _unload_judge(judge: Any) -> None:
+    """Move model weights to CPU before deletion so CUDA memory is freed immediately.
+
+    Models loaded with device_map="auto" add accelerate dispatch hooks that
+    prevent the standard .cpu()/.to() from working. We remove the hooks first,
+    then move each parameter tensor individually as a fallback.
+    """
+    for attr in ("_model", "model"):
+        m = getattr(judge, attr, None)
+        if m is None:
+            continue
+        # Remove accelerate dispatch hooks so weight movement is unrestricted
+        try:
+            from accelerate.hooks import remove_hook_from_module
+            remove_hook_from_module(m, recurse=True)
+        except Exception:
+            pass
+        # Move every parameter and buffer tensor to CPU individually
+        try:
+            for param in m.parameters():
+                param.data = param.data.cpu()
+                if param.grad is not None:
+                    param.grad.data = param.grad.data.cpu()
+            for buf in m.buffers():
+                buf.data = buf.data.cpu()
+        except Exception:
+            try:
+                m.cpu()
+            except Exception:
+                pass
+        setattr(judge, attr, None)
+    for attr in ("_tokenizer", "tokenizer"):
+        setattr(judge, attr, None)
+
+
 def _free_gpu() -> None:
     """Run GC and release cached VRAM back to CUDA allocator."""
     gc.collect()
+    gc.collect()  # second pass catches objects freed in the first
     try:
         import torch
         if torch.cuda.is_available():
+            torch.cuda.synchronize()
             torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
     except Exception:
         pass
 
@@ -171,10 +209,11 @@ class MultiJudge:
             if output_path:
                 df.to_csv(output_path, index=False, encoding="utf-8")
 
-            # Free GPU memory before loading next judge.
-            # del must happen here (in the scope that holds the reference) —
-            # passing `judge` to a helper and del-ing the parameter there does
-            # nothing to the reference count in this frame.
+            # Free GPU memory before loading the next judge.
+            # 1. Move weights to CPU — releases CUDA memory immediately.
+            # 2. del in this scope — drops the last Python reference.
+            # 3. _free_gpu — GC + empty_cache + ipc_collect.
+            _unload_judge(judge)
             del judge
             _free_gpu()
             logger.info(f"=== {judge_name} complete — VRAM freed ===\n")

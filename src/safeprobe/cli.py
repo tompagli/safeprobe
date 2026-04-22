@@ -125,7 +125,11 @@ def _cmd_attack(config, attack_name):
     from safeprobe.attacks.composite.attack import CompositeAttack
     from safeprobe.datasets.adapters import create_adapter
 
-    attacks_to_run = ["promptmap", "pair", "cipherchat", "composite"] if attack_name == "all" else [attack_name]
+    if attack_name == "all":
+        # Respect the order declared in the config's 'attacks:' list
+        attacks_to_run = config.attacks or ["promptmap", "pair", "cipherchat", "composite"]
+    else:
+        attacks_to_run = [attack_name]
 
     for name in attacks_to_run:
         print(f"\n--- Running {name} ---")

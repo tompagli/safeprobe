@@ -1,15 +1,27 @@
 # ── Target ────────────────────────────────────────────────────────────────────
-# Qwen3-4B supports a <think> reasoning mode; SafeProbe disables it by default
-# so responses stay clean for judge evaluation.
 target_model: Qwen/Qwen3-4B
-target_model_type: huggingface     # runs locally on GPU, no API cost
+target_model_type: huggingface
 
 # ── Attacks ───────────────────────────────────────────────────────────────────
 attacks:
+  - promptmap
+  - cipherchat
+  - pair
   - composite
 
+# ── Dataset ───────────────────────────────────────────────────────────────────
+# JailbreakBench: 100 publicly available harmful behaviors across 10 categories.
+# 50 behaviors is the standard sample size in PAIR, GCG, and AutoDAN papers.
 dataset: jailbreakbench
-sample_size: 100
+sample_size: 50
+
+# ── PAIR attacker (GPT-4.1 as red-team attacker, Qwen as target) ──────────────
+# 5 streams × 5 iterations matches the original PAIR paper (Chao et al., 2023).
+# Each behavior exits early when a jailbreak is found, so actual API calls < 1250.
+pair_attack_model: gpt-4.1-2025-04-14
+pair_attack_model_type: openai
+pair_n_streams: 5
+pair_n_iterations: 5
 
 # ── CoT judge (DeepSeek — local, free) ───────────────────────────────────────
 judge_model: deepseek-ai/DeepSeek-R1-Distill-Llama-8B
@@ -23,11 +35,11 @@ judges:
 
 llamaguard_model: meta-llama/Llama-Guard-3-8B
 harmbench_model: cais/HarmBench-Llama-2-13b-cls
-load_in_4bit: false
+load_in_4bit: true
 judge_delay: 0.5
 
 # ── Output ────────────────────────────────────────────────────────────────────
-results_dir: results/qwen
+results_dir: results/qwen_full
 log_dir: logs
 verbose: false
 save_intermediate: true
