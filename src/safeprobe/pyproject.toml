@@ -59,6 +59,7 @@ local = [
     "transformers>=4.40.0",
     "accelerate>=0.30.0",
     "bitsandbytes>=0.43.0",
+    "datasets>=2.0.0",
     "sentencepiece>=0.1.99",
     "protobuf>=3.20.0",
 ]
@@ -71,6 +72,7 @@ full = [
     "transformers>=4.40.0",
     "accelerate>=0.30.0",
     "bitsandbytes>=0.43.0",
+    "datasets>=2.0.0",
     "sentencepiece>=0.1.99",
     "protobuf>=3.20.0",
 ]
