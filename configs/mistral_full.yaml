@@ -1,0 +1,51 @@
+# ── Target ────────────────────────────────────────────────────────────────────
+target_model: mistralai/Mistral-7B-Instruct-v0.3
+target_model_type: huggingface
+
+# ── Attacks ───────────────────────────────────────────────────────────────────
+attacks:
+  - promptmap
+  - cipherchat
+  - pair
+  - composite
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+dataset: mixed
+sample_size: 60
+dataset_mix:
+  - name: jailbreakbench
+    samples: 20
+  - name: advbench
+    samples: 20
+  - name: harmbench
+    samples: 20
+
+# ── PAIR attacker (GPT-4.1 as red-team attacker, Mistral as target) ──────────
+# 5 streams × 5 iterations matches the original PAIR paper (Chao et al., 2023).
+# Each behavior exits early when a jailbreak is found, so actual API calls < 1250.
+pair_attack_model: gpt-4.1-2025-04-14
+pair_attack_model_type: openai
+pair_n_streams: 5
+pair_n_iterations: 5
+
+# ── CoT judge (DeepSeek — local, free) ───────────────────────────────────────
+judge_model: deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+judge_model_type: local
+
+# ── Multi-judge: all three backends ──────────────────────────────────────────
+judges:
+  - deepseek
+  - llamaguard
+  - harmbench
+
+llamaguard_model: meta-llama/Llama-Guard-3-8B
+harmbench_model: cais/HarmBench-Llama-2-13b-cls
+# Mistral-7B in fp16 ~14 GB — fits on A5500. Set true if running out of VRAM.
+load_in_4bit: false
+judge_delay: 0.5
+
+# ── Output ────────────────────────────────────────────────────────────────────
+results_dir: results/mistral_full
+log_dir: logs
+verbose: false
+save_intermediate: true

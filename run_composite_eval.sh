@@ -30,7 +30,7 @@ for MODEL in "${CONFIGS[@]}"; do
     fi
 
     # Read attack list from YAML for display (safeprobe reads it internally)
-    ATTACKS=$(grep -A20 '^attacks:' "$CONFIG" | grep '^ *-' | awk '{print $2}' | tr '\n' ',' | sed 's/,$//')
+    ATTACKS=$(awk '/^attacks:/{found=1; next} found && /^ *- [a-z]/{print $2} found && !/^ *-/{found=0}' "$CONFIG" | tr '\n' ',' | sed 's/,$//')
 
     echo ""
     echo "══════════════════════════════════════════════════════"

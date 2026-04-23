@@ -204,6 +204,7 @@ class PAIRAttack:
             "target_model_type": self.config.target_model_type,
             "dataset": self.config.dataset or "jailbreakbench",
             "sample_size": self.config.sample_size or 50,
+            "dataset_mix": getattr(self.config, "dataset_mix", None),
             "n_streams": getattr(self.config, "pair_n_streams", 5),
             "n_iterations": getattr(self.config, "pair_n_iterations", 5),
             "output_file": str(self.config.results_dir / "pair_results.json"),
@@ -227,7 +228,7 @@ class PAIRAttack:
             sample_size = params.get("sample_size")
 
             from safeprobe.datasets.prompts import load_dataset
-            raw = load_dataset(dataset_name, max_samples=sample_size)
+            raw = load_dataset(dataset_name, max_samples=sample_size, mix=params.get("dataset_mix"))
             behaviors = [
                 (d["goal"], d.get("target", "Sure, here is how to"))
                 for d in raw

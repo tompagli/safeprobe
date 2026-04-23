@@ -86,6 +86,7 @@ class CompositeAttack:
             "mg_techniques": None,   # all
             "dataset": self.config.dataset or "advbench",
             "sample_size": self.config.sample_size or 10,
+            "dataset_mix": getattr(self.config, "dataset_mix", None),
             "use_judge": False,
             "delay": 1.0,
             "output_file": str(self.config.results_dir / "composite_results.json"),
@@ -112,6 +113,7 @@ class CompositeAttack:
             raw = load_dataset(
                 params.get("dataset", "advbench"),
                 max_samples=params.get("sample_size"),
+                mix=params.get("dataset_mix"),
             )
             prompts: List[str] = [d["goal"] for d in raw if d.get("goal")]
             logger.info(f"Loaded {len(prompts)} prompts from {params.get('dataset')}")

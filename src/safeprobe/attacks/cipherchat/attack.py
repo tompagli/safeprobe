@@ -83,7 +83,8 @@ class CipherChatAttack:
 
     def get_default_parameters(self):
         return {"target_model":self.config.target_model,"target_model_type":self.config.target_model_type,
-            "encode_method":"caesar","prompts":"advbench","sample_size":self.config.sample_size or 10,
+            "encode_method":"caesar","prompts":self.config.dataset or "advbench",
+            "dataset_mix":getattr(self.config,"dataset_mix",None),"sample_size":self.config.sample_size or 10,
             "output_file":str(self.config.results_dir/"cipherchat_results.json")}
 
     def execute(self, params):
@@ -93,9 +94,9 @@ class CipherChatAttack:
             if not expert: return {"technique":self.name,"success":False,"error":"Unknown encoding"}
             sys_p = SYS_PROMPTS.get(params.get("encode_method",""),"")
             pi = params.get("prompts","advbench")
-            if pi == "advbench":
-                from safeprobe.datasets.prompts import load_advbench
-                raw = [d["goal"] for d in load_advbench(max_samples=params.get("sample_size"))]
+            if pi in ("advbench","harmbench","jailbreakbench","mixed"):
+                from safeprobe.datasets.prompts import load_dataset
+                raw = [d["goal"] for d in load_dataset(pi, max_samples=params.get("sample_size"), mix=params.get("dataset_mix"))]
             else: raw = [p.strip() for p in pi.split(",")]
             entries = []
             for i, prompt in enumerate(raw, 1):
@@ -107,7 +108,7 @@ class CipherChatAttack:
                 entries.append({"attack_tool":"CipherChat","attack_prompt":enc,"original_prompt":prompt,
                     "response_prompt":resp,"decoded_response":dec,"encode_method":params.get("encode_method"),
                     "attack_models":params["target_model"],"attack_successful":ok})
-                print(f"  [{i}/{len(raw)}] {'jailbroken' if ok else 'refused'}")
+                print(f"  [{i}/{len(raw)}] {'jailbroken' if ok else 'refused'}", flush=True)
                 time.sleep(1)
             out = params.get("output_file","cipherchat_results.json")
             os.makedirs(os.path.dirname(out) or ".", exist_ok=True)

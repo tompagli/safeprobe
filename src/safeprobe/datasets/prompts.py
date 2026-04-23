@@ -255,20 +255,43 @@ def load_jailbreakbench(
     )
 
 
-def load_dataset(name: str, path: Optional[str] = None, max_samples: Optional[int] = None) -> List[Dict]:
+def load_mixed(mix: List[Dict]) -> List[Dict]:
+    """Load samples from multiple datasets and combine them.
+
+    Args:
+        mix: List of dicts with 'name' (dataset name) and 'samples' (count) keys.
+
+    Returns:
+        Combined list of prompt dicts in the order specified.
+    """
+    combined = []
+    for entry in mix:
+        name = entry.get("name", "")
+        n = entry.get("samples")
+        combined.extend(load_dataset(name, max_samples=n))
+    return combined
+
+
+def load_dataset(name: str, path: Optional[str] = None, max_samples: Optional[int] = None,
+                 mix: Optional[List[Dict]] = None) -> List[Dict]:
     """
     Load a named dataset.
 
     Args:
-        name: Dataset name ('advbench' or path to file).
+        name: Dataset name ('advbench', 'harmbench', 'jailbreakbench', 'mixed', or path).
         path: Optional explicit file path.
         max_samples: Maximum number of samples.
+        mix: Required when name='mixed'. List of {'name': ..., 'samples': ...} dicts.
 
     Returns:
         List of prompt dictionaries.
     """
     name_lower = name.lower().replace("-", "").replace("_", "")
-    if name_lower == "advbench":
+    if name_lower == "mixed":
+        if not mix:
+            raise ValueError("dataset='mixed' requires a dataset_mix list in config")
+        return load_mixed(mix)
+    elif name_lower == "advbench":
         return load_advbench(path=path, max_samples=max_samples)
     elif name_lower in ("harmbench", "hb"):
         return load_harmbench(path=path, max_samples=max_samples)
@@ -277,5 +300,4 @@ def load_dataset(name: str, path: Optional[str] = None, max_samples: Optional[in
     elif path:
         return _load_local(path, max_samples)
     else:
-        # Try treating name as a path
         return _load_local(name, max_samples)

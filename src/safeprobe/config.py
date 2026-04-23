@@ -46,8 +46,9 @@ class Config:
     attacks: List[str] = field(default_factory=lambda: ["promptmap", "pair", "cipherchat"])
 
     # Dataset
-    dataset: str = "advbench"  # advbench, harmbench, jailbreakbench, or custom path
+    dataset: str = "advbench"  # advbench, harmbench, jailbreakbench, mixed, or custom path
     sample_size: Optional[int] = 50
+    dataset_mix: Optional[List[Dict]] = None  # used when dataset='mixed'
     iterations: int = 3
 
     # PAIR-specific attacker settings
