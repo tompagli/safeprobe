@@ -1,5 +1,5 @@
 # ── Target ────────────────────────────────────────────────────────────────────
-target_model: Qwen/Qwen3-4B
+target_model: Qwen/Qwen3.5-9B
 target_model_type: huggingface
 
 # ── Attacks ───────────────────────────────────────────────────────────────────
@@ -10,12 +10,17 @@ attacks:
   - composite
 
 # ── Dataset ───────────────────────────────────────────────────────────────────
-# JailbreakBench: 100 publicly available harmful behaviors across 10 categories.
-# 50 behaviors is the standard sample size in PAIR, GCG, and AutoDAN papers.
-dataset: jailbreakbench
-sample_size: 50
+dataset: mixed
+sample_size: 60
+dataset_mix:
+  - name: jailbreakbench
+    samples: 20
+  - name: advbench
+    samples: 20
+  - name: harmbench
+    samples: 20
 
-# ── PAIR attacker (GPT-4.1 as red-team attacker, Qwen as target) ──────────────
+# ── PAIR attacker (GPT-4.1 as red-team attacker, Mistral as target) ──────────
 # 5 streams × 5 iterations matches the original PAIR paper (Chao et al., 2023).
 # Each behavior exits early when a jailbreak is found, so actual API calls < 1250.
 pair_attack_model: gpt-4.1-2025-04-14
@@ -35,7 +40,8 @@ judges:
 
 llamaguard_model: meta-llama/Llama-Guard-3-8B
 harmbench_model: cais/HarmBench-Llama-2-13b-cls
-load_in_4bit: true
+# Mistral-7B in fp16 ~14 GB — fits on A5500. Set true if running out of VRAM.
+load_in_4bit: false
 judge_delay: 0.5
 
 # ── Output ────────────────────────────────────────────────────────────────────
