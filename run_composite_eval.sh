@@ -2,6 +2,7 @@
 # run_eval.sh
 # Runs the full attack + multi-judge pipeline for any model config.
 # Attacks are read from the 'attacks:' list in the YAML — no hardcoding.
+# Already-completed attack steps are skipped automatically.
 #
 # Prerequisites:
 #   export OPENAI_API_KEY="sk-..."   # required for OpenAI targets/PAIR attacker
@@ -29,18 +30,43 @@ for MODEL in "${CONFIGS[@]}"; do
         continue
     fi
 
-    # Read attack list from YAML for display (safeprobe reads it internally)
+    # Read results_dir and attack list from YAML
+    RESULTS_DIR=$(awk '/^results_dir:/{print $2}' "$CONFIG")
     ATTACKS=$(awk '/^attacks:/{found=1; next} found && /^ *- [a-z]/{print $2} found && !/^ *-/{found=0}' "$CONFIG" | tr '\n' ',' | sed 's/,$//')
 
     echo ""
     echo "══════════════════════════════════════════════════════"
-    echo "  Model  : ${MODEL}"
-    echo "  Attacks: ${ATTACKS}"
+    echo "  Model     : ${MODEL}"
+    echo "  Attacks   : ${ATTACKS}"
+    echo "  Result dir: ${RESULTS_DIR}"
     echo "══════════════════════════════════════════════════════"
 
-    # Step 1 — Run all attacks listed in the config (no --attack flag = runs all)
-    echo "[1/4] Running attacks: ${ATTACKS}..."
-    safeprobe --config "$CONFIG" attack
+    # Step 1 — Run each attack individually, skipping ones with existing output files
+    echo "[1/4] Checking attacks..."
+    ATTACK_OUTPUT_MAP="promptmap:promptmap_results.json cipherchat:cipherchat_results.json pair:pair_results.json composite:composite_results.json"
+
+    PENDING_ATTACKS=()
+    for ENTRY in $ATTACK_OUTPUT_MAP; do
+        ATK="${ENTRY%%:*}"
+        FILE="${ENTRY##*:}"
+        # Only process attacks listed in this config
+        if echo "$ATTACKS" | grep -qw "$ATK"; then
+            if [[ -f "${RESULTS_DIR}/${FILE}" ]]; then
+                echo "  [SKIP] ${ATK} — ${RESULTS_DIR}/${FILE} already exists"
+            else
+                PENDING_ATTACKS+=("$ATK")
+            fi
+        fi
+    done
+
+    if [[ ${#PENDING_ATTACKS[@]} -eq 0 ]]; then
+        echo "  [SKIP] All attacks already completed."
+    else
+        for ATK in "${PENDING_ATTACKS[@]}"; do
+            echo "  [RUN] ${ATK}..."
+            safeprobe --config "$CONFIG" attack --attack "$ATK"
+        done
+    fi
 
     # Step 2 — Consolidate all attack JSON results into one CSV
     echo "[2/4] Consolidating results..."
@@ -54,7 +80,7 @@ for MODEL in "${CONFIGS[@]}"; do
     echo "[4/4] Generating report..."
     safeprobe --config "$CONFIG" report --use-judge
 
-    echo "[DONE] ${MODEL} — results in: $(grep results_dir "$CONFIG" | awk '{print $2}')"
+    echo "[DONE] ${MODEL} — results in: ${RESULTS_DIR}/"
 done
 
 echo ""
@@ -62,7 +88,7 @@ echo "════════════════════════�
 echo "  All evaluations complete."
 echo "  Results:"
 for MODEL in "${CONFIGS[@]}"; do
-    DIR=$(grep results_dir configs/${MODEL}.yaml 2>/dev/null | awk '{print $2}')
+    DIR=$(awk '/^results_dir:/{print $2}' "configs/${MODEL}.yaml" 2>/dev/null)
     [[ -n "$DIR" ]] && echo "    ${MODEL}: ${DIR}/"
 done
 echo "══════════════════════════════════════════════════════"
