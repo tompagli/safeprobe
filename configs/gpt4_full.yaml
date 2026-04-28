@@ -1,0 +1,51 @@
+# ── Target ────────────────────────────────────────────────────────────────────
+target_model: gpt-4.1-2025-04-14
+target_model_type: openai          # reads OPENAI_API_KEY from env
+
+# ── Attacks ───────────────────────────────────────────────────────────────────
+attacks:
+  - promptmap
+  - cipherchat
+  - pair
+  - composite
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+dataset: mixed
+sample_size: 60
+dataset_mix:
+  - name: jailbreakbench
+    samples: 20
+  - name: advbench
+    samples: 20
+  - name: harmbench
+    samples: 20
+
+# ── PAIR attacker (GPT-4.1 attacks itself as target) ──────────────────────────
+# 5 streams × 5 iterations matches the original PAIR paper (Chao et al., 2023).
+# Each behavior exits early when a jailbreak is found, so actual API calls < 1250.
+pair_attack_model: gpt-4.1-2025-04-14
+pair_attack_model_type: openai
+pair_n_streams: 5
+pair_n_iterations: 5
+
+# ── CoT judge (DeepSeek — local, free) ───────────────────────────────────────
+judge_model: deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+judge_model_type: local
+
+# ── Multi-judge: all three backends ──────────────────────────────────────────
+judges:
+  - deepseek
+  - llamaguard
+  - harmbench
+
+llamaguard_model: meta-llama/Llama-Guard-3-8B
+harmbench_model: cais/HarmBench-Llama-2-13b-cls
+# Judge models are local — 4-bit keeps all three within 24 GB VRAM budget.
+load_in_4bit: false
+judge_delay: 0.5
+
+# ── Output ────────────────────────────────────────────────────────────────────
+results_dir: results/gpt4_full
+log_dir: logs
+verbose: false
+save_intermediate: true
