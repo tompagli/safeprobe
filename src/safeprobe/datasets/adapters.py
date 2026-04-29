@@ -35,6 +35,29 @@ class LLMAdapter(ABC):
         return self.query(messages, temperature=temperature, max_tokens=max_tokens)
 
 
+def _openai_create(client, model, messages, temperature, max_tokens):
+    """Call OpenAI chat completions handling two model-family quirks:
+
+    1. Newer models (gpt-5, o-series) require max_completion_tokens, not max_tokens.
+    2. Newer models reject temperature=0; omit the param to use their default (1).
+    """
+    kwargs = {"model": model, "messages": messages, "max_completion_tokens": max_tokens}
+    if temperature != 0.0:
+        kwargs["temperature"] = temperature
+
+    try:
+        return client.chat.completions.create(**kwargs).choices[0].message.content
+    except Exception as e:
+        err = str(e)
+        # Older model: doesn't know max_completion_tokens — retry with max_tokens
+        if "max_completion_tokens" in err or ("unsupported_parameter" in err and "max_completion_tokens" in err):
+            kwargs.pop("max_completion_tokens")
+            kwargs["max_tokens"] = max_tokens
+            kwargs["temperature"] = temperature  # older models accept temperature=0
+            return client.chat.completions.create(**kwargs).choices[0].message.content
+        raise
+
+
 class OpenAIAdapter(LLMAdapter):
     """Adapter for OpenAI API (including Azure OpenAI)."""
 
@@ -49,26 +72,7 @@ class OpenAIAdapter(LLMAdapter):
 
     def query(self, messages: List[Dict[str, str]], temperature: float = 0.0,
               max_tokens: int = 1024) -> str:
-        # Newer OpenAI models (gpt-5, o-series) require max_completion_tokens;
-        # fall back to max_tokens for older models that don't accept the new param.
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                temperature=temperature,
-                max_completion_tokens=max_tokens,
-            )
-        except Exception as e:
-            if "max_completion_tokens" in str(e) or "unsupported_parameter" in str(e):
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-            else:
-                raise
-        return response.choices[0].message.content
+        return _openai_create(self.client, self.model_name, messages, temperature, max_tokens)
 
 
 class AzureOpenAIAdapter(LLMAdapter):
@@ -87,24 +91,7 @@ class AzureOpenAIAdapter(LLMAdapter):
 
     def query(self, messages: List[Dict[str, str]], temperature: float = 0.0,
               max_tokens: int = 1024) -> str:
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                temperature=temperature,
-                max_completion_tokens=max_tokens,
-            )
-        except Exception as e:
-            if "max_completion_tokens" in str(e) or "unsupported_parameter" in str(e):
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-            else:
-                raise
-        return response.choices[0].message.content
+        return _openai_create(self.client, self.model_name, messages, temperature, max_tokens)
 
 
 class AnthropicAdapter(LLMAdapter):
