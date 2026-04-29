@@ -49,12 +49,25 @@ class OpenAIAdapter(LLMAdapter):
 
     def query(self, messages: List[Dict[str, str]], temperature: float = 0.0,
               max_tokens: int = 1024) -> str:
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        # Newer OpenAI models (gpt-5, o-series) require max_completion_tokens;
+        # fall back to max_tokens for older models that don't accept the new param.
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                temperature=temperature,
+                max_completion_tokens=max_tokens,
+            )
+        except Exception as e:
+            if "max_completion_tokens" in str(e) or "unsupported_parameter" in str(e):
+                response = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            else:
+                raise
         return response.choices[0].message.content
 
 
@@ -74,12 +87,23 @@ class AzureOpenAIAdapter(LLMAdapter):
 
     def query(self, messages: List[Dict[str, str]], temperature: float = 0.0,
               max_tokens: int = 1024) -> str:
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                temperature=temperature,
+                max_completion_tokens=max_tokens,
+            )
+        except Exception as e:
+            if "max_completion_tokens" in str(e) or "unsupported_parameter" in str(e):
+                response = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            else:
+                raise
         return response.choices[0].message.content
 
 
