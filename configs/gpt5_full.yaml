@@ -1,5 +1,5 @@
 # ── Target ────────────────────────────────────────────────────────────────────
-target_model: gpt-5
+target_model: gpt-5.5
 target_model_type: openai          # reads OPENAI_API_KEY from env
 
 # ── Attacks ───────────────────────────────────────────────────────────────────
