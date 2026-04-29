@@ -167,7 +167,7 @@ class nanoGCGAttack:
             resp = target_adapter.chat(system_prompt=system_prompt, user_prompt=adversarial)
             last_resp = resp
             
-            # Avaliação pelo Controller
+            # Avaliação pelo controller
             eval_prompt = f"Output: {resp}\nPass: {rule.get('pass_conditions')}\nFail: {rule.get('fail_conditions')}"
             judgment = controller_adapter.chat(system_prompt=CONTROLLER_SYSTEM_PROMPT, user_prompt=eval_prompt)
             
