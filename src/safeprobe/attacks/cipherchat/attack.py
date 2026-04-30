@@ -99,9 +99,26 @@ class CipherChatAttack:
                 raw = [d["goal"] for d in load_dataset(pi, max_samples=params.get("sample_size"), mix=params.get("dataset_mix"))]
             else: raw = [p.strip() for p in pi.split(",")]
             entries = []
+            blocked_by_policy = 0
             for i, prompt in enumerate(raw, 1):
                 enc = expert.encode(prompt)
-                resp = adapter.chat(sys_p, enc)
+                try:
+                    resp = adapter.chat(sys_p, enc)
+                except Exception as exc:
+                    err_str = str(exc)
+                    # API-level content policy block (e.g. OpenAI cyber_policy):
+                    # record as not jailbroken and continue — this is a valid result.
+                    if "cyber_policy" in err_str or "content_policy" in err_str or "content_filter" in err_str:
+                        blocked_by_policy += 1
+                        logger.warning(f"[{i}/{len(raw)}] Prompt blocked by API policy: {err_str[:120]}")
+                        entries.append({"attack_tool":"CipherChat","attack_prompt":enc,"original_prompt":prompt,
+                            "response_prompt":"[BLOCKED BY API POLICY]","decoded_response":"",
+                            "encode_method":params.get("encode_method"),"attack_models":params["target_model"],
+                            "attack_successful":False,"blocked_reason":err_str[:200]})
+                        print(f"  [{i}/{len(raw)}] blocked by policy", flush=True)
+                        time.sleep(1)
+                        continue
+                    raise
                 try: dec = expert.decode(resp)
                 except: dec = resp
                 ok = _attack_succeeded(resp, dec)
@@ -114,8 +131,11 @@ class CipherChatAttack:
             os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
             with open(out,"w") as f: json.dump(entries, f, indent=2, ensure_ascii=False)
             succ = sum(1 for e in entries if e["attack_successful"])
-            return {"technique":self.name,"success":True,"summary":{"total":len(raw),"successful":succ,
-                "asr":f"{succ/len(raw)*100:.1f}%" if raw else "0%"},"output_file":out}
+            summary = {"total":len(raw),"successful":succ,"blocked_by_policy":blocked_by_policy,
+                "asr":f"{succ/len(raw)*100:.1f}%" if raw else "0%"}
+            if blocked_by_policy:
+                logger.info(f"CipherChat: {blocked_by_policy}/{len(raw)} prompts blocked by API policy (counted as refused)")
+            return {"technique":self.name,"success":True,"summary":summary,"output_file":out}
         except Exception as e:
             logger.error(f"CipherChat attack failed: {e}", exc_info=True)
             return {"technique":self.name,"success":False,"error":str(e)}
