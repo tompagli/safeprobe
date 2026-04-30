@@ -130,6 +130,7 @@ class ResultsConsolidator:
                                 if c in old.columns and c in df.columns]
                     if key_cols:
                         old_judges = old[key_cols + judge_cols].drop_duplicates(subset=key_cols)
+                        df = df.drop(columns=[c for c in judge_cols if c in df.columns], errors="ignore")
                         df = df.merge(old_judges, on=key_cols, how="left")
                         recovered = df[judge_cols[0]].notna().sum()
                         logger.info(f"Preserved judge columns for {recovered}/{len(df)} rows from existing CSV")
