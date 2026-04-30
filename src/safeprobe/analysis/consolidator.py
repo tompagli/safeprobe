@@ -113,7 +113,29 @@ class ResultsConsolidator:
                 succ_w += w
         return float((1 - succ_w / total_w) * 100) if total_w else 0.0
 
-    def save_csv(self, df: pd.DataFrame, path: str):
+    def save_csv(self, df: pd.DataFrame, path: str, preserve_judge_columns: bool = True):
+        """Save consolidated DataFrame, preserving existing judge columns if present.
+
+        When reconsolidating after adding a new attack, the existing CSV already
+        has judge results for previous rows. This merges them back so multijudge
+        only needs to process the new, unjudged rows.
+        """
+        if preserve_judge_columns and os.path.exists(path):
+            try:
+                old = pd.read_csv(path, encoding="utf-8")
+                judge_cols = [c for c in old.columns if c.startswith("judge_")]
+                if judge_cols:
+                    # Build a key from stable attack columns to match rows
+                    key_cols = [c for c in ["attack_tool", "original_prompt", "attack_prompt"]
+                                if c in old.columns and c in df.columns]
+                    if key_cols:
+                        old_judges = old[key_cols + judge_cols].drop_duplicates(subset=key_cols)
+                        df = df.merge(old_judges, on=key_cols, how="left")
+                        recovered = df[judge_cols[0]].notna().sum()
+                        logger.info(f"Preserved judge columns for {recovered}/{len(df)} rows from existing CSV")
+            except Exception as e:
+                logger.warning(f"Could not preserve judge columns from existing CSV: {e}")
+
         df.to_csv(path, index=False, encoding="utf-8")
         logger.info(f"CSV saved to {path}")
 
