@@ -20,6 +20,7 @@ COMPLEXITY_WEIGHTS = {
     "CipherChat": 3,
     "PAIR": 7,
     "Composite": 5,
+    #"nanoGCG": 8, #revisar validação 
 }
 
 

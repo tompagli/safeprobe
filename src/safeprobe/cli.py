@@ -27,7 +27,7 @@ def _build_parser():
 
     # attack subcommand
     atk = sub.add_parser("attack", help="Run adversarial attacks")
-    atk.add_argument("--attack", choices=["promptmap", "pair", "cipherchat", "composite", "all"], default="all")
+    atk.add_argument("--attack", choices=["promptmap", "pair", "cipherchat", "composite", "nanogcg", "all"], default="all")
 
     # judge subcommand
     jdg = sub.add_parser("judge", help="Run CoT judge on consolidated CSV")
@@ -59,7 +59,7 @@ def _build_parser():
 
     # pipeline subcommand (attack -> consolidate -> judge -> report)
     pip = sub.add_parser("pipeline", help="Run full pipeline: attack -> consolidate -> judge -> report")
-    pip.add_argument("--attack", choices=["promptmap", "pair", "cipherchat", "composite", "all"], default="all")
+    pip.add_argument("--attack", choices=["promptmap", "pair", "cipherchat", "composite", "nanogcg", "all"], default="all")
     pip.add_argument("--skip-judge", action="store_true", help="Skip the judge step")
 
     return p
@@ -173,6 +173,15 @@ def _cmd_attack(config, attack_name):
                     print(f"  Composite: ASR={s.get('asr')} best={s.get('best_combination')}")
                 else:
                     print(f"  Composite failed: {r.get('error', 'unknown error')}")
+
+            elif name == "nanogcg":
+                from safeprobe.attacks.nanoGCG.attack import nanoGCGAttack
+                atk = nanoGCGAttack(config)
+                r = atk.execute(atk.get_default_parameters())
+                if r.get("success"):
+                    print(f"  nanoGCG: {r.get('summary', {})}")
+                else:
+                    print(f"  nanoGCG failed: {r.get('error', 'unknown error')}")
 
         except Exception as e:
             print(f"  {name} error: {e}")
